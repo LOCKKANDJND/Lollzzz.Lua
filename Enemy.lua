@@ -5,6 +5,7 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local workspace = game:GetService("Workspace")
 
 local plr = Players.LocalPlayer
 
@@ -354,10 +355,19 @@ do
     Toggle(p, "ESP SnapLine", false, function(v) print("ESP SnapLine:", v) end)
     Slider(p, "Limit Distance", 25, 1000, 300, function(v) print("Limit Distance:", math.floor(v)) end)
 
-    -- Right column example options
-    Toggle(p, "Team Check", false, function(v) print("Team Check:", v) end)
-    Toggle(p, "NPC Check", false, function(v) print("NPC Check:", v) end)
-    Toggle(p, "Health Check", false, function(v) print("Health Check:", v) end)
+    -- New toggle for ESP
+    local espToggle = Toggle(p, "Enable ESP", false, function(v)
+        espEnabled = v
+        if not v then
+            -- Cleanup ESP boxes
+            for _, box in pairs(espBoxes) do
+                if box and box.Parent then
+                    box:Destroy()
+                end
+            end
+            espBoxes = {}
+        end
+    end)
 end
 
 -- Populate other tabs with placeholders
@@ -390,7 +400,59 @@ end
 selectTab("Visual")
 makeDraggable(topbar, window)
 
--- Optional: toggle UI with RightShift (mobile users can add their own button)
+-- ======== ESP SYSTEM ========
+local espEnabled = false
+local espBoxes = {}
+local function createESP(targetCharacter)
+    local box = Make("Frame", {
+        BackgroundTransparency = 1,
+        BorderSizePixel = 2,
+        BorderColor3 = Color3.fromRGB(255, 0, 0),
+        Size = UDim2.new(0, 100, 0, 100),
+        Visible = false,
+        ZIndex = 10
+    })
+    box.Parent = game:GetService("CoreGui")
+    return box
+end
+
+local camera = workspace.CurrentCamera
+
+RunService.RenderStepped:Connect(function()
+    if not espEnabled then return end
+    local localPlayer = Players.LocalPlayer
+    local localCharacter = localPlayer.Character
+    if not localCharacter or not camera then return end
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = player.Character.HumanoidRootPart
+            local screenPos, onScreen = camera:WorldToScreenPoint(hrp.Position)
+            if onScreen then
+                local box = espBoxes[player] or createESP(player.Character)
+                box.Position = UDim2.new(0, screenPos.X - box.Size.X.Offset/2, 0, screenPos.Y - box.Size.Y.Offset/2)
+                box.Visible = true
+                espBoxes[player] = box
+            else
+                if espBoxes[player] then
+                    espBoxes[player].Visible = false
+                end
+            end
+        end
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    if espBoxes[player] then
+        espBoxes[player]:Destroy()
+        espBoxes[player] = nil
+    end
+end)
+
+-- Note: The toggle in the UI controls 'espEnabled' and clears ESP boxes if disabled.
+
+
+-- OPTIONAL: Toggle UI with RightShift
 local visible = true
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
