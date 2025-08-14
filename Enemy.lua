@@ -1,165 +1,203 @@
---!strict
--- MatrixHub-Style UI Template with Functional Controls
--- Drop this in a LocalScript (e.g., StarterPlayerScripts). Pure Instance.new, no libraries.
--- Functions now trigger actual game logic where applicable (e.g., ESP, Aimbot simulation).
+-- [Lukezz Hubbb Mobile Edition by Exunys © CC0 1.0 Universal (2025)]
+-- Adapted from https://github.com/Exunys/AirHub-V2/blob/main/src/Main.lua
+-- Mobile-friendly version with no key system. For educational use only.
+
+local game = game
+local loadstring = loadstring or loadstring
+local typeof = typeof
+local select = select
+local next = next
+local pcall = pcall
+local tablefind = table.find
+local tablesort = table.sort
+local mathfloor = math.floor
+local stringgsub = string.gsub
+local wait, delay, spawn = task.wait, task.delay, task.spawn
+local osdate = os.date
+
+-- Loading external dependencies (simplified for mobile)
+local success, err = pcall(function()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/Exunys/Roblox-Functions-Library/main/Library.lua"))()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/Exunys/AirHub-V2/main/src/UI%20Library.lua"))()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/Exunys/Exunys-ESP/main/src/ESP.lua"))()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/Exunys/Aimbot-V3/main/src/Aimbot.lua"))()
+end)
+if not success then warn("Failed to load dependencies: " .. err) return end
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
-
-local plr = Players.LocalPlayer
+local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
--- ===== Utility =====
-local function Make(className: string, props: { [string]: any }?, children: { Instance }?)
-    local inst = Instance.new(className)
-    if props then
-        for k, v in pairs(props) do
-            inst[k] = v
-        end
-    end
-    if children then
-        for _, child in ipairs(children) do
-            child.Parent = inst
-        end
-    end
-    return inst
-end
-
-local function uiCorner(radius: number)
-    return Make("UICorner", { CornerRadius = UDim.new(0, radius) })
-end
-
-local function uiStroke(thickness: number?, color: Color3?, trans: number?)
-    return Make("UIStroke", { Thickness = thickness or 1, Color = color or Color3.fromRGB(255, 255, 255), Transparency = trans or 0.3 })
-end
-
-local function uiPadding(l: number?, t: number?, r: number?, b: number?)
-    return Make("UIPadding", { PaddingLeft = UDim.new(0, l or 0), PaddingTop = UDim.new(0, t or 0), PaddingRight = UDim.new(0, r or 0), PaddingBottom = UDim.new(0, b or 0) })
-end
-
-local function newLabel(text: string, size: number?)
-    return Make("TextLabel", {
-        BackgroundTransparency = 1,
-        Font = Enum.Font.GothamBold,
-        Text = text,
-        TextSize = size or 14,
-        TextColor3 = Color3.fromRGB(220, 230, 240),
-        TextXAlignment = Enum.TextXAlignment.Left,
-    })
-end
-
--- Simple draggable behavior for a frame
-local function makeDraggable(handle: Frame, dragTarget: Frame)
-    local dragging = false
-    local dragStart, startPos
-    handle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = dragTarget.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            dragTarget.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-end
-
--- ===== Controls =====
-local Theme = {
-    Bg = Color3.fromRGB(25, 31, 38),
-    Panel = Color3.fromRGB(34, 41, 51),
-    Panel2 = Color3.fromRGB(42, 50, 62),
-    Accent = Color3.fromRGB(52, 152, 219),
-    Accent2 = Color3.fromRGB(0, 180, 255),
-    TextDim = Color3.fromRGB(180, 190, 200),
-    On = Color3.fromRGB(65, 180, 90),
-    Off = Color3.fromRGB(70, 76, 86)
+-- Initialize settings with mobile adjustments
+local ESP = {
+    DeveloperSettings = { Debug = false },
+    Settings = {
+        Enabled = false,
+        LoadConfigOnLaunch = false,
+        TeamCheck = false,
+        VisibleCheck = true,
+        DistanceCheck = true,
+        MaxDistance = 500,
+        RefreshRate = 0.1
+    },
+    Properties = {
+        Box = { Enabled = false, Thickness = 1, Color = Color3.fromRGB(255, 0, 0), Filled = false },
+        Name = { Enabled = false, Color = Color3.fromRGB(255, 255, 255), Font = 2 },
+        HealthBar = { Enabled = false, Outline = true, Color = Color3.fromRGB(0, 255, 0) },
+        Tracer = { Enabled = false, Position = "Bottom", Color = Color3.fromRGB(255, 255, 255), Thickness = 1 },
+        Crosshair = { Enabled = false, CenterDot = { Enabled = false, Size = 3, Color = Color3.fromRGB(255, 255, 255) } }
+    }
 }
 
-local function Toggle(parent: Instance, labelText: string, default: boolean, callback: (boolean) -> ())
-    local row = Make("Frame", { BackgroundColor3 = Theme.Panel, Size = UDim2.new(1, 0, 0, 40) }, {
-        uiCorner(12), uiStroke(1, Color3.fromRGB(255, 255, 255), 0.8), uiPadding(12, 8, 12, 8)
-    })
-    row.Parent = parent
+local Aimbot = {
+    DeveloperSettings = { Debug = false },
+    Settings = {
+        Enabled = false,
+        ThirdPerson = false,
+        TriggerKey = Enum.KeyCode.Q,
+        TeamCheck = false,
+        WallCheck = true,
+        VisibleCheck = true,
+        DistanceCheck = true,
+        MaxDistance = 500
+    },
+    FOVSettings = {
+        Enabled = false,
+        Radius = 100,
+        Sides = 6,
+        Transparency = 0.5,
+        Color = Color3.fromRGB(255, 255, 255),
+        Filled = false,
+        Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    }
+}
 
-    local label = newLabel(labelText, 14)
-    label.Size = UDim2.new(1, -80, 1, 0)
-    label.Parent = row
+-- Mobile-friendly GUI setup
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "LukezzHubbbMobile"
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.IgnoreGuiInset = true
 
-    local knob = Make("TextButton", {
-        Size = UDim2.new(0, 52, 0, 24),
-        Position = UDim2.new(1, -60, 0.5, -12),
-        BackgroundColor3 = default and Theme.On or Theme.Off,
-        Text = "",
-        AutoButtonColor = false
-    }, { uiCorner(12) })
-    knob.Parent = row
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0.8, 0, 0.8, 0) -- Scalable for mobile
+MainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 31, 38)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
 
-    local dot = Make("Frame", {
-        Size = UDim2.new(0, 18, 0, 18),
-        Position = default and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9),
-        BackgroundColor3 = Color3.fromRGB(245, 247, 250)
-    }, { uiCorner(9) })
-    dot.Parent = knob
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1, 0, 0, 60)
+TopBar.BackgroundColor3 = Color3.fromRGB(34, 41, 51)
+TopBar.Parent = MainFrame
 
-    local state = default
-    local function set(v: boolean)
-        state = v
-        knob.BackgroundColor3 = v and Theme.On or Theme.Off
-        dot.Position = v and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
-        if callback then
-            task.spawn(function() callback(v) end)
-        end
-    end
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -20, 1, 0)
+Title.Position = UDim2.new(0, 10, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "Lukezz Hubbb Mobile"
+Title.TextColor3 = Color3.fromRGB(52, 152, 219)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 24
+Title.Parent = TopBar
 
-    knob.MouseButton1Click:Connect(function() set(not state) end)
-    return { Set = set, Get = function() return state end, Instance = row }
+local CloseButton = Instance.new("TextButton")
+CloseButton.Size = UDim2.new(0, 40, 0, 40)
+CloseButton.Position = UDim2.new(1, -50, 0, 10)
+CloseButton.BackgroundColor3 = Color3.fromRGB(70, 76, 86)
+CloseButton.Text = "X"
+CloseButton.TextColor3 = Color3.fromRGB(255, 0, 0)
+CloseButton.TextSize = 20
+CloseButton.Parent = TopBar
+CloseButton.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+end)
+
+local Content = Instance.new("ScrollingFrame")
+Content.Size = UDim2.new(1, 0, 1, -60)
+Content.Position = UDim2.new(0, 0, 0, 60)
+Content.BackgroundTransparency = 1
+Content.ScrollBarThickness = 10
+Content.CanvasSize = UDim2.new(0, 0, 2, 0)
+Content.Parent = MainFrame
+
+local Layout = Instance.new("UIListLayout")
+Layout.Padding = UDim.new(0, 10)
+Layout.Parent = Content
+
+-- Mobile-friendly toggle function
+local function CreateToggle(labelText: string, default: boolean, callback: (boolean) -> ())
+    local ToggleFrame = Instance.new("Frame")
+    ToggleFrame.Size = UDim2.new(1, -20, 0, 50)
+    ToggleFrame.BackgroundColor3 = Color3.fromRGB(34, 41, 51)
+    ToggleFrame.Parent = Content
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(0.7, 0, 1, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = labelText
+    Label.TextColor3 = Color3.fromRGB(180, 190, 200)
+    Label.TextSize = 18
+    Label.Parent = ToggleFrame
+
+    local ToggleButton = Instance.new("TextButton")
+    ToggleButton.Size = UDim2.new(0, 60, 0, 30)
+    ToggleButton.Position = UDim2.new(1, -70, 0.5, -15)
+    ToggleButton.BackgroundColor3 = default and Color3.fromRGB(65, 180, 90) or Color3.fromRGB(70, 76, 86)
+    ToggleButton.Text = default and "ON" or "OFF"
+    ToggleButton.TextColor3 = Color3.fromRGB(245, 247, 250)
+    ToggleButton.TextSize = 16
+    ToggleButton.Parent = ToggleFrame
+
+    ToggleButton.MouseButton1Click:Connect(function()
+        local newState = not (ToggleButton.Text == "ON")
+        ToggleButton.Text = newState and "ON" or "OFF"
+        ToggleButton.BackgroundColor3 = newState and Color3.fromRGB(65, 180, 90) or Color3.fromRGB(70, 76, 86)
+        if callback then callback(newState) end
+    end)
 end
 
-local function Slider(parent, labelText: string, min: number, max: number, default: number, callback: (number) -> ())
-    local row = Make("Frame", { BackgroundColor3 = Theme.Panel, Size = UDim2.new(1, 0, 0, 50) }, {
-        uiCorner(12), uiStroke(1, Color3.fromRGB(255, 255, 255), 0.8), uiPadding(12, 8, 12, 8)
-    })
-    row.Parent = parent
+-- Mobile-friendly slider function
+local function CreateSlider(labelText: string, min: number, max: number, default: number, callback: (number) -> ())
+    local SliderFrame = Instance.new("Frame")
+    SliderFrame.Size = UDim2.new(1, -20, 0, 60)
+    SliderFrame.BackgroundColor3 = Color3.fromRGB(34, 41, 51)
+    SliderFrame.Parent = Content
 
-    local label = newLabel(labelText, 14)
-    label.Size = UDim2.new(1, 0, 0, 16)
-    label.Parent = row
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, 0, 0, 20)
+    Label.BackgroundTransparency = 1
+    Label.Text = labelText
+    Label.TextColor3 = Color3.fromRGB(180, 190, 200)
+    Label.TextSize = 18
+    Label.Parent = SliderFrame
 
-    local bar = Make("Frame", { BackgroundColor3 = Theme.Panel2, Size = UDim2.new(1, -80, 0, 8), Position = UDim2.new(0, 0, 0, 26) }, { uiCorner(6) })
-    bar.Parent = row
+    local Bar = Instance.new("Frame")
+    Bar.Size = UDim2.new(1, -40, 0, 10)
+    Bar.Position = UDim2.new(0, 20, 0, 25)
+    Bar.BackgroundColor3 = Color3.fromRGB(42, 50, 62)
+    Bar.Parent = SliderFrame
 
-    local fill = Make("Frame", { BackgroundColor3 = Theme.Accent, Size = UDim2.new((default - min) / (max - min), 0, 1, 0) }, { uiCorner(6) })
-    fill.Parent = bar
+    local Fill = Instance.new("Frame")
+    Fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    Fill.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
+    Fill.Parent = Bar
 
-    local valueLbl = newLabel(tostring(default), 14)
-    valueLbl.TextXAlignment = Enum.TextXAlignment.Right
-    valueLbl.Size = UDim2.new(0, 70, 0, 20)
-    valueLbl.Position = UDim2.new(1, -70, 0, 22)
-    valueLbl.Parent = row
+    local ValueLabel = Instance.new("TextLabel")
+    ValueLabel.Size = UDim2.new(0, 50, 0, 20)
+    ValueLabel.Position = UDim2.new(1, -70, 0, 20)
+    ValueLabel.BackgroundTransparency = 1
+    ValueLabel.Text = tostring(default)
+    ValueLabel.TextColor3 = Color3.fromRGB(245, 247, 250)
+    ValueLabel.TextSize = 16
+    ValueLabel.Parent = SliderFrame
 
-    local val = default
     local dragging = false
-    local function set(n: number)
-        n = math.clamp(n, min, max)
-        val = n
-        local alpha = (n - min) / (max - min)
-        fill.Size = UDim2.new(alpha, 0, 1, 0)
-        valueLbl.Text = tostring(math.floor(n + 0.5))
-        if callback then task.spawn(function() callback(val) end) end
-    end
-
-    bar.InputBegan:Connect(function(input)
+    Bar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
         end
@@ -171,366 +209,150 @@ local function Slider(parent, labelText: string, min: number, max: number, defau
     end)
     UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local rel = (input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X
-            set(min + rel * (max - min))
+            local rel = (input.Position.X - Bar.AbsolutePosition.X) / Bar.AbsoluteSize.X
+            local value = mathfloor(min + rel * (max - min))
+            Fill.Size = UDim2.new(math.clamp((value - min) / (max - min), 0, 1), 0, 1, 0)
+            ValueLabel.Text = tostring(value)
+            if callback then callback(value) end
         end
     end)
-
-    set(default)
-    return { Set = set, Get = function() return val end, Instance = row }
 end
 
-local function Dropdown(parent: Instance, labelText: string, options: { string }, defaultIndex: number?, callback: (string, number) -> ())
-    local row = Make("Frame", { BackgroundColor3 = Theme.Panel, Size = UDim2.new(1, 0, 0, 40) }, {
-        uiCorner(12), uiStroke(1, Color3.fromRGB(255, 255, 255), 0.8), uiPadding(12, 8, 12, 8)
-    })
-    row.Parent = parent
+-- Setup UI Tabs
+local Tabs = {"ESP", "Aimbot", "Crosshair"}
+local CurrentTab = "ESP"
 
-    local label = newLabel(labelText, 14)
-    label.Size = UDim2.new(1, -120, 1, 0)
-    label.Parent = row
+local function SwitchTab(tabName)
+    CurrentTab = tabName
+    -- Simple tab switching (update UI logic here if using a library)
+    print("Switched to tab:", tabName)
+end
 
-    local btn = Make("TextButton", {
-        Size = UDim2.new(0, 100, 1, -8),
-        Position = UDim2.new(1, -100, 0, 4),
-        BackgroundColor3 = Theme.Panel2,
-        TextColor3 = Color3.fromRGB(230, 235, 240),
-        Font = Enum.Font.Gotham,
-        TextSize = 14,
-        AutoButtonColor = true,
-        Text = ""
-    }, { uiCorner(10) })
-    btn.Parent = row
+for _, tab in ipairs(Tabs) do
+    local TabButton = Instance.new("TextButton")
+    TabButton.Size = UDim2.new(1 / #Tabs, -10, 0, 40)
+    TabButton.Position = UDim2.new((tablefind(Tabs, tab) - 1) / #Tabs, 10, 0, 10)
+    TabButton.BackgroundColor3 = tab == CurrentTab and Color3.fromRGB(42, 50, 62) or Color3.fromRGB(34, 41, 51)
+    TabButton.Text = tab
+    TabButton.TextColor3 = Color3.fromRGB(180, 190, 200)
+    TabButton.TextSize = 18
+    TabButton.Parent = TopBar
+    TabButton.MouseButton1Click:Connect(function() SwitchTab(tab) end)
+end
 
-    local choiceLbl = newLabel("", 14)
-    choiceLbl.TextXAlignment = Enum.TextXAlignment.Center
-    choiceLbl.Size = UDim2.new(1, 0, 1, 0)
-    choiceLbl.Parent = btn
-
-    local menu = Make("Frame", { Visible = false, BackgroundColor3 = Theme.Panel2, Size = UDim2.new(0, 140, 0, (#options * 28) + 8), Position = UDim2.new(1, -140, 1, 6) }, {
-        uiCorner(10), uiStroke(1, Color3.fromRGB(255, 255, 255), 0.8), uiPadding(6, 6, 6, 6)
-    })
-    menu.Parent = row
-
-    local list = Make("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder })
-    list.Parent = menu
-
-    local index = math.clamp(defaultIndex or 1, 1, #options)
-    local function set(i: number)
-        index = i
-        choiceLbl.Text = tostring(options[i])
-        if callback then task.spawn(function() callback(options[i], i) end) end
-    end
-
-    for i, opt in ipairs(options) do
-        local optBtn = Make("TextButton", {
-            BackgroundColor3 = Theme.Panel,
-            Size = UDim2.new(1, 0, 0, 26),
-            Text = tostring(opt),
-            TextColor3 = Color3.fromRGB(230, 235, 240),
-            Font = Enum.Font.Gotham,
-            TextSize = 14,
-            AutoButtonColor = true
-        }, { uiCorner(8) })
-        optBtn.Parent = menu
-        optBtn.MouseButton1Click:Connect(function()
-            set(i)
-            menu.Visible = false
-        end)
-    end
-
-    btn.MouseButton1Click:Connect(function()
-        menu.Visible = not menu.Visible
+-- ESP Controls
+if CurrentTab == "ESP" then
+    CreateToggle("Enabled", ESP.Settings.Enabled, function(v)
+        ESP.Settings.Enabled = v
     end)
-
-    set(index)
-    return { SetIndex = set, GetIndex = function() return index end, Instance = row }
-end
-
--- ===== Root UI =====
-local gui = Make("ScreenGui", { Name = "MatrixUI_Template", ResetOnSpawn = false, IgnoreGuiInset = true })
-gui.Parent = plr:WaitForChild("PlayerGui")
-
-local window = Make("Frame", {
-    Size = UDim2.new(0, 640, 0, 420),
-    Position = UDim2.new(0.5, -320, 0.5, -210),
-    BackgroundColor3 = Theme.Bg
-}, { uiCorner(16), uiStroke(1.2, Color3.fromRGB(255, 255, 255), 0.85) })
-window.Parent = gui
-
--- Top bar
-local topbar = Make("Frame", {
-    BackgroundColor3 = Theme.Bg,
-    Size = UDim2.new(1, -16, 0, 54),
-    Position = UDim2.new(0, 8, 0, 8)
-}, { uiCorner(12), uiPadding(16, 10, 16, 10) })
-topbar.Parent = window
-
-local title = newLabel("MatrixHub", 20)
-title.TextColor3 = Color3.fromRGB(160, 200, 255)
-title.Parent = topbar
-
--- Tabs
-local tabs = { "Visual", "Aimbot", "Misc", "Whitelist", "Teleport" }
-
-local tabBar = Make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), Position = UDim2.new(0, 0, 0, 58) })
-tabBar.Parent = window
-
-local tabList = Make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder })
-tabList.Parent = tabBar
-tabList.HorizontalAlignment = Enum.HorizontalAlignment.Left
-
-local pages = {}
-
-local content = Make("Frame", {
-    BackgroundColor3 = Theme.Bg,
-    Size = UDim2.new(1, -16, 1, -100),
-    Position = UDim2.new(0, 8, 0, 96)
-}, { uiCorner(12) })
-content.Parent = window
-
-local function newPage()
-    local scroller = Make("ScrollingFrame", {
-        BackgroundColor3 = Theme.Bg,
-        Size = UDim2.new(1, -16, 1, -16),
-        Position = UDim2.new(0, 8, 0, 8),
-        CanvasSize = UDim2.new(0, 0, 0, 0),
-        ScrollBarThickness = 6,
-        AutomaticCanvasSize = Enum.AutomaticSize.Y
-    }, { uiPadding(8, 8, 8, 8) })
-    scroller.Parent = content
-
-    local grid = Make("UIGridLayout", {
-        CellPadding = UDim2.new(0, 10, 0, 10),
-        CellSize = UDim2.new(0.5, -10, 0, 50),
-        SortOrder = Enum.SortOrder.LayoutOrder
-    })
-    grid.Parent = scroller
-
-    return scroller
-end
-
-local function selectTab(name: string)
-    for tabName, page in pairs(pages) do
-        page.Visible = (tabName == name)
-    end
-    for _, btn in ipairs(tabBar:GetChildren()) do
-        if btn:IsA("TextButton") then
-            btn.TextColor3 = (btn.Name == name) and Color3.fromRGB(230, 240, 255) or Theme.TextDim
-            btn.BackgroundColor3 = (btn.Name == name) and Theme.Panel2 or Color3.fromRGB(0, 0, 0)
-        end
-    end
-end
-
-for _, name in ipairs(tabs) do
-    local tbtn = Make("TextButton", {
-        Name = name,
-        Size = UDim2.new(0, 110, 0, 28),
-        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-        Text = name,
-        TextColor3 = Theme.TextDim,
-        Font = Enum.Font.GothamSemibold,
-        TextSize = 14,
-        AutoButtonColor = true
-    }, { uiCorner(10), uiStroke(1, Color3.fromRGB(255, 255, 255), 0.9) })
-    tbtn.Parent = tabBar
-
-    local page = newPage()
-    page.Visible = false
-    pages[name] = page
-
-    tbtn.MouseButton1Click:Connect(function()
-        selectTab(name)
+    CreateToggle("Box", ESP.Properties.Box.Enabled, function(v)
+        ESP.Properties.Box.Enabled = v
+    end)
+    CreateToggle("Filled", ESP.Properties.Box.Filled, function(v)
+        ESP.Properties.Box.Filled = v
+    end)
+    CreateToggle("Name", ESP.Properties.Name.Enabled, function(v)
+        ESP.Properties.Name.Enabled = v
+    end)
+    CreateToggle("Health Bar", ESP.Properties.HealthBar.Enabled, function(v)
+        ESP.Properties.HealthBar.Enabled = v
+    end)
+    CreateToggle("Tracer", ESP.Properties.Tracer.Enabled, function(v)
+        ESP.Properties.Tracer.Enabled = v
+    end)
+    CreateSlider("Max Distance", 100, 1000, ESP.Settings.MaxDistance, function(v)
+        ESP.Settings.MaxDistance = v
     end)
 end
 
--- ===== Functional Implementation =====
--- ESP Settings
-local ESPSettings = {
-    Enabled = false,
-    Box = false,
-    Filled = false,
-    Distance = false,
-    Name = false,
-    Health = false,
-    SnapLine = false,
-    LimitDistance = 300,
-    TeamCheck = false,
-    NPCCheck = false,
-    HealthCheck = false
-}
+-- Aimbot Controls
+if CurrentTab == "Aimbot" then
+    CreateToggle("Enabled", Aimbot.Settings.Enabled, function(v)
+        Aimbot.Settings.Enabled = v
+    end)
+    CreateToggle("Wall Check", Aimbot.Settings.WallCheck, function(v)
+        Aimbot.Settings.WallCheck = v
+    end)
+    CreateSlider("FOV Radius", 50, 200, Aimbot.FOVSettings.Radius, function(v)
+        Aimbot.FOVSettings.Radius = v
+    end)
+    CreateSlider("Max Distance", 100, 1000, Aimbot.Settings.MaxDistance, function(v)
+        Aimbot.Settings.MaxDistance = v
+    end)
+end
 
-local ESPDrawings = {}
+-- Crosshair Controls
+if CurrentTab == "Crosshair" then
+    CreateToggle("Enabled", ESP.Properties.Crosshair.Enabled, function(v)
+        ESP.Properties.Crosshair.Enabled = v
+    end)
+    CreateToggle("Center Dot", ESP.Properties.Crosshair.CenterDot.Enabled, function(v)
+        ESP.Properties.Crosshair.CenterDot.Enabled = v
+    end)
+    CreateSlider("Dot Size", 1, 10, ESP.Properties.Crosshair.CenterDot.Size, function(v)
+        ESP.Properties.Crosshair.CenterDot.Size = v
+    end)
+end
 
+-- Core Functionality (Simplified for Mobile)
 local function UpdateESP()
-    for player, drawings in pairs(ESPDrawings) do
-        for _, drawing in pairs(drawings) do
-            drawing:Remove()
-        end
-    end
-    ESPDrawings = {}
-
-    if not ESPSettings.Enabled then return end
-
+    if not ESP.Settings.Enabled then return end
     for _, player in ipairs(Players:GetPlayers()) do
-        if player == plr then continue end
-
+        if player == LocalPlayer then continue end
         local char = player.Character
-        if not char or not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChild("Humanoid") then continue end
+        if not char or not char:FindFirstChild("HumanoidRootPart") then continue end
+        local distance = (char.HumanoidRootPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
+        if ESP.Settings.DistanceCheck and distance > ESP.Settings.MaxDistance then continue end
+        -- Add drawing logic here (requires ESP library integration)
+    end
+end
 
-        local humanoid = char.Humanoid
-        if ESPSettings.HealthCheck and humanoid.Health <= 0 then continue end
-
-        local drawings = {}
+local function UpdateAimbot()
+    if not Aimbot.Settings.Enabled then return end
+    local target = nil
+    local minDist = Aimbot.FOVSettings.Radius
+    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        local char = player.Character
+        if not char or not char:FindFirstChild("Head") then continue end
         local headPos, onScreen = Camera:WorldToViewportPoint(char.Head.Position)
-
-        if ESPSettings.Box and onScreen then
-            local rootPos = Camera:WorldToViewportPoint(char.HumanoidRootPart.Position - Vector3.new(0, 3, 0))
-            local height = math.abs(headPos.Y - rootPos.Y)
-            local width = height * 0.5
-            drawings.box = Drawing.new("Square")
-            drawings.box.Size = Vector2.new(width, height)
-            drawings.box.Position = Vector2.new(headPos.X - width / 2, headPos.Y)
-            drawings.box.Color = Color3.fromRGB(255, 0, 0)
-            drawings.box.Thickness = 1
-            drawings.box.Filled = ESPSettings.Filled
-            drawings.box.Visible = true
-        end
-
-        if ESPSettings.Name and onScreen then
-            drawings.name = Drawing.new("Text")
-            drawings.name.Text = player.Name
-            drawings.name.Size = 16
-            drawings.name.Color = Color3.fromRGB(0, 255, 0)
-            drawings.name.Position = Vector2.new(headPos.X, headPos.Y - 20)
-            drawings.name.Outline = true
-            drawings.name.Visible = true
-        end
-
-        if ESPSettings.Health and onScreen then
-            drawings.health = Drawing.new("Text")
-            drawings.health.Text = math.floor(humanoid.Health) .. "/" .. humanoid.MaxHealth
-            drawings.health.Size = 16
-            drawings.health.Color = Color3.fromRGB(0, 0, 255)
-            drawings.health.Position = Vector2.new(headPos.X, headPos.Y + 20)
-            drawings.health.Outline = true
-            drawings.health.Visible = true
-        end
-
-        if ESPSettings.Distance and onScreen then
-            local distance = (char.HumanoidRootPart.Position - plr.Character.HumanoidRootPart.Position).Magnitude
-            if ESPSettings.LimitDistance > 0 and distance > ESPSettings.LimitDistance then
-                for _, d in pairs(drawings) do d.Visible = false end
-            else
-                drawings.distance = Drawing.new("Text")
-                drawings.distance.Text = math.floor(distance) .. " studs"
-                drawings.distance.Size = 16
-                drawings.distance.Color = Color3.fromRGB(255, 255, 255)
-                drawings.distance.Position = Vector2.new(headPos.X, headPos.Y + 40)
-                drawings.distance.Outline = true
-                drawings.distance.Visible = true
+        if onScreen then
+            local dist = (Vector2.new(headPos.X, headPos.Y) - center).Magnitude
+            if dist < minDist then
+                minDist = dist
+                target = char.Head
             end
         end
-
-        if ESPSettings.SnapLine and onScreen then
-            drawings.snapLine = Drawing.new("Line")
-            drawings.snapLine.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-            drawings.snapLine.To = Vector2.new(headPos.X, headPos.Y)
-            drawings.snapLine.Color = Color3.fromRGB(255, 182, 193)
-            drawings.snapLine.Thickness = 1
-            drawings.snapLine.Visible = true
-        end
-
-        ESPDrawings[player] = drawings
+    end
+    if target then
+        Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Position)
     end
 end
 
-RunService.RenderStepped:Connect(UpdateESP)
-
--- Populate "Visual" with functional controls
-do
-    local p = pages["Visual"]
-    local espToggle = Toggle(p, "ESP Enabled", false, function(v)
-        ESPSettings.Enabled = v
-        UpdateESP()
-    end)
-    local boxToggle = Toggle(p, "ESP Box", false, function(v) ESPSettings.Box = v; UpdateESP() end)
-    local typeDrop = Dropdown(p, "ESP Type", { "2D", "3D" }, 1, function(_, i)
-        ESPSettings.Type = i == 1 and "2D" or "3D" -- Note: 3D not implemented here, just for demo
-        UpdateESP()
-    end)
-    local filledToggle = Toggle(p, "ESP Filled", false, function(v) ESPSettings.Filled = v; UpdateESP() end)
-    local distToggle = Toggle(p, "ESP Distance", true, function(v) ESPSettings.Distance = v; UpdateESP() end)
-    local nameToggle = Toggle(p, "ESP Name", true, function(v) ESPSettings.Name = v; UpdateESP() end)
-    local healthToggle = Toggle(p, "ESP Health", true, function(v) ESPSettings.Health = v; UpdateESP() end)
-    local snapToggle = Toggle(p, "ESP SnapLine", false, function(v) ESPSettings.SnapLine = v; UpdateESP() end)
-    local limitSlider = Slider(p, "Limit Distance", 25, 1000, 300, function(v)
-        ESPSettings.LimitDistance = v
-        UpdateESP()
-    end)
-
-    -- Right column
-    local teamToggle = Toggle(p, "Team Check", false, function(v) ESPSettings.TeamCheck = v; UpdateESP() end)
-    local npcToggle = Toggle(p, "NPC Check", false, function(v) ESPSettings.NPCCheck = v; UpdateESP() end)
-    local healthCheckToggle = Toggle(p, "Health Check", false, function(v) ESPSettings.HealthCheck = v; UpdateESP() end)
+local function UpdateCrosshair()
+    if ESP.Properties.Crosshair.Enabled then
+        -- Add crosshair drawing logic here (requires ESP library)
+    end
 end
 
--- Populate other tabs with functional placeholders
-do
-    local p = pages["Aimbot"]
-    local aimToggle = Toggle(p, "Enabled", false, function(v)
-        print("Aimbot Enabled:", v)
-        -- Add aimbot logic here if needed
-    end)
-    local aimPartDrop = Dropdown(p, "Aim Part", { "Head", "Torso", "HumanoidRootPart" }, 1, function(c)
-        print("Aim Part:", c)
-    end)
-    local fovSlider = Slider(p, "FOV", 10, 300, 120, function(v)
-        print("FOV:", math.floor(v))
-    end)
-    local teamToggle = Toggle(p, "Team Check", true, function(v)
-        print("AB TeamCheck:", v)
-    end)
-end
+RunService.RenderStepped:Connect(function()
+    UpdateESP()
+    UpdateAimbot()
+    UpdateCrosshair()
+end)
 
-do
-    local p = pages["Misc"]
-    local fpsToggle = Toggle(p, "Show FPS Counter", true, function(v)
-        print("FPS Counter:", v)
-    end)
-    local noPPToggle = Toggle(p, "No Post-Processing", false, function(v)
-        print("No PP:", v)
-    end)
-    local themeDrop = Dropdown(p, "Theme", { "Dark", "Darker", "Midnight" }, 1, function(c)
-        print("Theme:", c)
-    end)
-end
-
-do
-    local p = pages["Whitelist"]
-    local whitelistToggle = Toggle(p, "Enable Whitelist", false, function(v)
-        print("Whitelist:", v)
-    end)
-end
-
-do
-    local p = pages["Teleport"]
-    local locDrop = Dropdown(p, "Location", { "Spawn", "Shop", "Center" }, 1, function(c)
-        print("Teleport to:", c)
-        -- Add teleport logic here if needed
-    end)
-end
-
--- Default select first tab and enable dragging by topbar
-selectTab("Visual")
-makeDraggable(topbar, window)
-
--- Optional: toggle UI with RightShift
+-- Toggle UI with touch or key
 local visible = true
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
-    if input.KeyCode == Enum.KeyCode.RightShift then
+    if input.KeyCode == Enum.KeyCode.Insert or input.UserInputType == Enum.UserInputType.Touch then
         visible = not visible
-        window.Visible = visible
+        MainFrame.Visible = visible
     end
 end)
+
+-- Cleanup
+getgenv().LukezzHubbbLoaded = true
+getgenv().LukezzHubbbLoading = false
+print("Lukezz Hubbb Mobile loaded successfully at " .. osdate("%I:%M %p %Z on %A, %B %d, %Y"))
