@@ -1,463 +1,276 @@
---!strict
--- MatrixHub-Style UI Template (no gameplay hacks)
--- Drop this in a LocalScript (e.g., StarterPlayerScripts). Pure Instance.new, no libraries.
+-- Create the ScreenGui
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MatrixHubGui"
+ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
 
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local workspace = game:GetService("Workspace")
+-- Main Frame
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0.9, 0, 0.8, 0)
+MainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
 
-local plr = Players.LocalPlayer
+-- Title Label
+local Title = Instance.new("TextLabel")
+Title.Text = "MatrixHub"
+Title.Size = UDim2.new(1, 0, 0.1, 0)
+Title.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Title.TextColor3 = Color3.fromRGB(0, 255, 255)
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 24
+Title.Parent = MainFrame
 
--- ===== Utility =====
-local function Make(className, props, children)
-    local inst = Instance.new(className)
-    if props then
-        for k,v in pairs(props) do
-            inst[k] = v
+-- Tab Buttons Frame
+local TabButtonsFrame = Instance.new("Frame")
+TabButtonsFrame.Size = UDim2.new(1, 0, 0.1, 0)
+TabButtonsFrame.Position = UDim2.new(0, 0, 0.1, 0)
+TabButtonsFrame.BackgroundTransparency = 1
+TabButtonsFrame.Parent = MainFrame
+
+local Tabs = {"Visual", "Aimbot", "Misc", "Whitelist", "Teleport"}
+local TabButtons = {}
+local currentTab = nil
+
+local function createTabButton(name, index)
+    local btn = Instance.new("TextButton")
+    btn.Text = name
+    btn.Size = UDim2.new(1/ #Tabs, 0, 1, 0)
+    btn.Position = UDim2.new((index - 1)/ #Tabs, 0, 0, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    btn.Font = Enum.Font.SourceSans
+    btn.TextSize = 18
+    btn.Parent = TabButtonsFrame
+    
+    btn.MouseButton1Click:Connect(function()
+        switchTab(name)
+        -- Change button colors
+        for _, b in pairs(TabButtons) do
+            b.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
         end
-    end
-    if children then
-        for _,child in ipairs(children) do
-            child.Parent = inst
-        end
-    end
-    return inst
-end
-
-local function uiCorner(radius)
-    return Make("UICorner", { CornerRadius = UDim.new(0, radius) })
-end
-
-local function uiStroke(thickness, color, trans)
-    return Make("UIStroke", { Thickness = thickness or 1, Color = color or Color3.fromRGB(255,255,255), Transparency = trans or 0.3 })
-end
-
-local function uiPadding(l,t,r,b)
-    return Make("UIPadding", { PaddingLeft = UDim.new(0,l or 0), PaddingTop = UDim.new(0,t or 0),
-        PaddingRight = UDim.new(0,r or 0), PaddingBottom = UDim.new(0,b or 0) })
-end
-
-local function newLabel(text, size)
-    return Make("TextLabel", {
-        BackgroundTransparency = 1,
-        Font = Enum.Font.GothamBold,
-        Text = text,
-        TextSize = size or 14,
-        TextColor3 = Color3.fromRGB(220,230,240),
-        TextXAlignment = Enum.TextXAlignment.Left,
-    })
-end
-
--- Simple draggable behavior for a frame
-local function makeDraggable(handle: Frame, dragTarget: Frame)
-    local dragging = false
-    local dragStart, startPos
-    handle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = dragTarget.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
+        btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            dragTarget.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
+    return btn
 end
 
--- ===== Controls =====
-local Theme = {
-    Bg = Color3.fromRGB(25,31,38),
-    Panel = Color3.fromRGB(34, 41, 51),
-    Panel2 = Color3.fromRGB(42, 50, 62),
-    Accent = Color3.fromRGB(52, 152, 219),
-    Accent2 = Color3.fromRGB(0, 180, 255),
-    TextDim = Color3.fromRGB(180,190,200),
-    On = Color3.fromRGB(65, 180, 90),
-    Off = Color3.fromRGB(70, 76, 86)
-}
+for i, name in ipairs(Tabs) do
+    table.insert(TabButtons, createTabButton(name, i))
+end
 
-local function Toggle(parent: Instance, labelText: string, default: boolean, callback)
-    local row = Make("Frame", { BackgroundColor3 = Theme.Panel, Size = UDim2.new(1,0,0,40) }, {
-        uiCorner(12), uiStroke(1, Color3.fromRGB(255,255,255), 0.8), uiPadding(12,8,12,8)
-    })
-    row.Parent = parent
+-- Content Frames for each tab
+local TabsContent = {}
+local function createTabContent(name)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, 0, 0.9, -0.1)
+    frame.Position = UDim2.new(0, 0, 0.1, 0)
+    frame.BackgroundTransparency = 1
+    frame.Parent = MainFrame
+    frame.Visible = false
+    TabsContent[name] = frame
+    return frame
+end
 
-    local label = newLabel(labelText, 14)
-    label.Size = UDim2.new(1,-80,1,0); label.Parent = row
+for _, tabName in ipairs(Tabs) do
+    createTabContent(tabName)
+end
 
-    local knob = Make("TextButton", {
-        Size = UDim2.new(0,52,0,24),
-        Position = UDim2.new(1,-60,0.5,-12),
-        BackgroundColor3 = default and Theme.On or Theme.Off,
-        Text = "",
-        AutoButtonColor = false
-    }, { uiCorner(12) })
-    knob.Parent = row
+-- Function to switch tabs
+local function switchTab(name)
+    for tab, frame in pairs(TabsContent) do
+        frame.Visible = (tab == name)
+    end
+    currentTab = name
+end
 
-    local dot = Make("Frame", {
-        Size = UDim2.new(0,18,0,18),
-        Position = default and UDim2.new(1,-21,0.5,-9) or UDim2.new(0,3,0.5,-9),
-        BackgroundColor3 = Color3.fromRGB(245,247,250)
-    }, { uiCorner(9) })
-    dot.Parent = knob
+-- Initialize first tab
+switchTab("Visual")
 
+-- Helper function to create toggles and sliders
+local function createToggle(parent, label, default)
+    local toggleFrame = Instance.new("Frame")
+    toggleFrame.Size = UDim2.new(1, -20, 0, 30)
+    toggleFrame.Position = UDim2.new(0, 10, 0, 0)
+    toggleFrame.BackgroundTransparency = 1
+    toggleFrame.Parent = parent
+    
+    local labelText = Instance.new("TextLabel")
+    labelText.Text = label
+    labelText.Size = UDim2.new(0.7, 0, 1, 0)
+    labelText.BackgroundTransparency = 1
+    labelText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    labelText.Font = Enum.Font.SourceSans
+    labelText.TextSize = 16
+    labelText.TextXAlignment = Enum.TextXAlignment.Left
+    labelText.Parent = toggleFrame
+    
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.Size = UDim2.new(0.3, -10, 0.6, 0)
+    toggleButton.Position = UDim2.new(0.7, 5, 0.2, 0)
+    toggleButton.BackgroundColor3 = default and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+    toggleButton.Text = ""
+    toggleButton.Parent = toggleFrame
+    
     local state = default
-    local function set(v)
-        state = v
-        knob.BackgroundColor3 = v and Theme.On or Theme.Off
-        dot.Position = v and UDim2.new(1,-21,0.5,-9) or UDim2.new(0,3,0.5,-9)
-        if callback then
-            task.spawn(function() callback(v) end)
-        end
-    end
-
-    knob.MouseButton1Click:Connect(function() set(not state) end)
+    toggleButton.MouseButton1Click:Connect(function()
+        state = not state
+        toggleButton.BackgroundColor3 = state and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+        -- You can connect this state to your scripts
+        print(label .. " toggled to " .. tostring(state))
+    end)
     return {
-        Set = set,
-        Get = function() return state end,
-        Instance = row
+        Frame = toggleFrame,
+        Button = toggleButton,
+        State = function() return state end
     }
 end
 
-local function Slider(parent, labelText, min, max, default, callback)
-    local row = Make("Frame", { BackgroundColor3 = Theme.Panel, Size = UDim2.new(1,0,0,50) }, {
-        uiCorner(12), uiStroke(1, Color3.fromRGB(255,255,255), 0.8), uiPadding(12,8,12,8)
-    })
-    row.Parent = parent
-
-    local label = newLabel(labelText, 14)
-    label.Size = UDim2.new(1,0,0,16); label.Parent = row
-
-    local bar = Make("Frame", { BackgroundColor3 = Theme.Panel2, Size = UDim2.new(1,-80,0,8), Position = UDim2.new(0,0,0,26) }, { uiCorner(6) })
-    bar.Parent = row
-
-    local fill = Make("Frame", { BackgroundColor3 = Theme.Accent, Size = UDim2.new((default-min)/(max-min),0,1,0) }, { uiCorner(6) })
-    fill.Parent = bar
-
-    local valueLbl = newLabel(tostring(default), 14)
-    valueLbl.TextXAlignment = Enum.TextXAlignment.Right
-    valueLbl.Size = UDim2.new(0,70,0,20)
-    valueLbl.Position = UDim2.new(1,-70,0,22)
-    valueLbl.Parent = row
-
-    local val = default
+local function createSlider(parent, label, min, max, default)
+    local sliderContainer = Instance.new("Frame")
+    sliderContainer.Size = UDim2.new(1, -20, 0, 50)
+    sliderContainer.Position = UDim2.new(0, 10, 0, 0)
+    sliderContainer.BackgroundTransparency = 1
+    sliderContainer.Parent = parent
+    
+    local labelText = Instance.new("TextLabel")
+    labelText.Text = label
+    labelText.Size = UDim2.new(0.4, 0, 1, 0)
+    labelText.BackgroundTransparency = 1
+    labelText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    labelText.Font = Enum.Font.SourceSans
+    labelText.TextSize = 16
+    labelText.TextXAlignment = Enum.TextXAlignment.Left
+    labelText.Parent = sliderContainer
+    
+    local slider = Instance.new("Frame")
+    slider.Size = UDim2.new(0.55, 0, 0.3, 0)
+    slider.Position = UDim2.new(0.45, 0, 0.35, 0)
+    slider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    slider.Parent = sliderContainer
+    
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new(0.5, 0, 1, 0)
+    fill.Position = UDim2.new(0, 0, 0, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
+    fill.Parent = slider
+    
+    local thumb = Instance.new("Frame")
+    thumb.Size = UDim2.new(0.02, 0, 1, 0)
+    thumb.Position = UDim2.new((default - min) / (max - min) - 0.01, 0, 0, 0)
+    thumb.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    thumb.BorderSizePixel = 0
+    thumb.Parent = fill
+    
+    local valueText = Instance.new("TextLabel")
+    valueText.Text = tostring(default)
+    valueText.Size = UDim2.new(0.15, 0, 1, 0)
+    valueText.Position = UDim2.new(0.75, 0, 0, 0)
+    valueText.BackgroundTransparency = 1
+    valueText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    valueText.Font = Enum.Font.SourceSans
+    valueText.TextSize = 14
+    valueText.Parent = sliderContainer
+    
     local dragging = false
-    local function set(n)
-        n = math.clamp(n, min, max)
-        val = n
-        local alpha = (n - min) / (max - min)
-        fill.Size = UDim2.new(alpha,0,1,0)
-        valueLbl.Text = tostring(math.floor(n + 0.5))
-        if callback then task.spawn(function() callback(val) end) end
-    end
-
-    bar.InputBegan:Connect(function(input)
+    
+    thumb.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
         end
     end)
-    UserInputService.InputEnded:Connect(function(input)
+    
+    thumb.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = false
         end
     end)
-    UserInputService.InputChanged:Connect(function(input)
+    
+    game:GetService("UserInputService").InputChanged:Connect(function(input, gameProcessed)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local rel = (input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X
-            set(min + rel * (max - min))
+            local absoluteX = input.Position.X
+            local sliderStart = slider.AbsolutePosition.X
+            local sliderWidth = slider.AbsoluteSize.X
+            local relativeX = math.clamp(absoluteX - sliderStart, 0, sliderWidth)
+            local percent = relativeX / sliderWidth
+            local newValue = math.floor(min + percent * (max - min))
+            thumb.Position = UDim2.new(percent - 0.01, 0, 0, 0)
+            valueText.Text = tostring(newValue)
+            -- Connect this value to your scripts
+            print(label .. ": " .. newValue)
         end
     end)
-
-    set(default)
-    return { Set = set, Get = function() return val end, Instance = row }
+    
+    -- Function to get current value
+    local function getValue()
+        local absPos = thumb.AbsolutePosition.X
+        local sliderStart = slider.AbsolutePosition.X
+        local sliderWidth = slider.AbsoluteSize.X
+        local relativeX = math.clamp(absPos - sliderStart, 0, sliderWidth)
+        local percent = relativeX / sliderWidth
+        local value = math.floor(min + percent * (max - min))
+        return value
+    end
+    
+    return {
+        Frame = sliderContainer,
+        GetValue = getValue
+    }
 end
 
-local function Dropdown(parent, labelText, options, defaultIndex, callback)
-    local row = Make("Frame", { BackgroundColor3 = Theme.Panel, Size = UDim2.new(1,0,0,40) }, {
-        uiCorner(12), uiStroke(1, Color3.fromRGB(255,255,255), 0.8), uiPadding(12,8,12,8)
-    })
-    row.Parent = parent
+-- Example of populating the "Visual" tab
+local visualTab = TabsContent["Visual"]
 
-    local label = newLabel(labelText, 14); label.Size = UDim2.new(1,-120,1,0); label.Parent = row
+-- ESP Box Toggle
+createToggle(visualTab, "ESP Box", false)
 
-    local btn = Make("TextButton", {
-        Size = UDim2.new(0,100,1,-8),
-        Position = UDim2.new(1,-100,0,4),
-        BackgroundColor3 = Theme.Panel2,
-        TextColor3 = Color3.fromRGB(230,235,240),
-        Font = Enum.Font.Gotham,
-        TextSize = 14,
-        AutoButtonColor = true,
-        Text = ""
-    }, { uiCorner(10) })
-    btn.Parent = row
+-- ESP Type Slider
+createSlider(visualTab, "ESP Type", 1, 3, 2)
 
-    local choiceLbl = newLabel("", 14)
-    choiceLbl.TextXAlignment = Enum.TextXAlignment.Center
-    choiceLbl.Size = UDim2.new(1,0,1,0)
-    choiceLbl.Parent = btn
+-- ESP Filled Toggle
+createToggle(visualTab, "ESP Filled", false)
 
-    local menu = Make("Frame", { Visible = false, BackgroundColor3 = Theme.Panel2, Size = UDim2.new(0,140,0, (#options*28)+8), Position = UDim2.new(1,-140,1,6) }, {
-        uiCorner(10), uiStroke(1, Color3.fromRGB(255,255,255), 0.8), uiPadding(6,6,6,6)
-    })
-    menu.Parent = row
+-- ESP Distance Slider
+createSlider(visualTab, "ESP Distance", 0, 100, 50)
 
-    local list = Make("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, Padding = UDim.new(0,6), SortOrder = Enum.SortOrder.LayoutOrder })
-    list.Parent = menu
+-- ESP Name Toggle
+createToggle(visualTab, "ESP Name", false)
 
-    local index = math.clamp(defaultIndex or 1, 1, #options)
-    local function set(i)
-        index = i
-        choiceLbl.Text = tostring(options[i])
-        if callback then task.spawn(function() callback(options[i], i) end) end
-    end
+-- ESP Health Toggle
+createToggle(visualTab, "ESP Health", false)
 
-    for i,opt in ipairs(options) do
-        local optBtn = Make("TextButton", {
-            BackgroundColor3 = Theme.Panel,
-            Size = UDim2.new(1,0,0,26),
-            Text = tostring(opt),
-            TextColor3 = Color3.fromRGB(230,235,240),
-            Font = Enum.Font.Gotham,
-            TextSize = 14,
-            AutoButtonColor = true
-        }, { uiCorner(8) })
-        optBtn.Parent = menu
-        optBtn.MouseButton1Click:Connect(function()
-            set(i)
-            menu.Visible = false
+-- ESP SnapLine Toggle
+createToggle(visualTab, "ESP SnapLine", false)
+
+-- Limit Distance Toggle
+createToggle(visualTab, "Limit Distance", false)
+
+-- You can similarly populate other tabs...
+
+-- OPTIONAL: Make GUI draggable for better mobile experience
+local dragging = false
+local dragInput, dragStart
+local startPos
+
+MainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
         end)
     end
-
-    btn.MouseButton1Click:Connect(function()
-        menu.Visible = not menu.Visible
-    end)
-
-    set(index)
-    return { SetIndex = set, GetIndex = function() return index end, Instance = row }
-end
-
--- ===== Root UI =====
-local gui = Make("ScreenGui", { Name = "MatrixUI_Template", ResetOnSpawn = false, IgnoreGuiInset = true })
-gui.Parent = plr:WaitForChild("PlayerGui")
-
-local window = Make("Frame", {
-    Size = UDim2.new(0, 640, 0, 420),
-    Position = UDim2.new(0.5, -320, 0.5, -210),
-    BackgroundColor3 = Theme.Bg
-}, { uiCorner(16), uiStroke(1.2, Color3.fromRGB(255,255,255), 0.85) })
-window.Parent = gui
-
--- Top bar
-local topbar = Make("Frame", {
-    BackgroundColor3 = Theme.Bg,
-    Size = UDim2.new(1, -16, 0, 54),
-    Position = UDim2.new(0,8,0,8)
-}, { uiCorner(12), uiPadding(16,10,16,10) })
-topbar.Parent = window
-
-local title = newLabel("MatrixHub", 20)
-title.TextColor3 = Color3.fromRGB(160, 200, 255)
-title.Parent = topbar
-
--- Tabs
-local tabs = { "Visual", "Aimbot", "Misc", "Whitelist", "Teleport" }
-
-local tabBar = Make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1,0,0,28), Position = UDim2.new(0,0,0,58) })
-tabBar.Parent = window
-
-local tabList = Make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0,12), SortOrder = Enum.SortOrder.LayoutOrder })
-tabList.Parent = tabBar
-tabList.HorizontalAlignment = Enum.HorizontalAlignment.Left
-
-local pages = {}
-
-local content = Make("Frame", {
-    BackgroundColor3 = Theme.Bg,
-    Size = UDim2.new(1,-16,1,-100),
-    Position = UDim2.new(0,8,0,96)
-}, { uiCorner(12) })
-content.Parent = window
-
-local function newPage()
-    local scroller = Make("ScrollingFrame", {
-        BackgroundColor3 = Theme.Bg,
-        Size = UDim2.new(1, -16, 1, -16),
-        Position = UDim2.new(0,8,0,8),
-        CanvasSize = UDim2.new(0,0,0,0),
-        ScrollBarThickness = 6,
-        AutomaticCanvasSize = Enum.AutomaticSize.Y
-    }, { uiPadding(8,8,8,8) })
-    scroller.Parent = content
-
-    local grid = Make("UIGridLayout", {
-        CellPadding = UDim2.new(0,10,0,10),
-        CellSize = UDim2.new(0.5, -10, 0, 50),
-        SortOrder = Enum.SortOrder.LayoutOrder
-    })
-    grid.Parent = scroller
-
-    return scroller
-end
-
-local function selectTab(name)
-    for tabName, page in pairs(pages) do
-        page.Visible = (tabName == name)
-    end
-    for _,btn in ipairs(tabBar:GetChildren()) do
-        if btn:IsA("TextButton") then
-            btn.TextColor3 = (btn.Name == name) and Color3.fromRGB(230,240,255) or Theme.TextDim
-            btn.BackgroundColor3 = (btn.Name == name) and Theme.Panel2 or Color3.fromRGB(0,0,0)
-        end
-    end
-end
-
-for _,name in ipairs(tabs) do
-    local tbtn = Make("TextButton", {
-        Name = name,
-        Size = UDim2.new(0,110,0,28),
-        BackgroundColor3 = Color3.fromRGB(0,0,0),
-        Text = name,
-        TextColor3 = Theme.TextDim,
-        Font = Enum.Font.GothamSemibold,
-        TextSize = 14,
-        AutoButtonColor = true
-    }, { uiCorner(10), uiStroke(1, Color3.fromRGB(255,255,255), 0.9) })
-    tbtn.Parent = tabBar
-
-    local page = newPage()
-    page.Visible = false
-    pages[name] = page
-
-    tbtn.MouseButton1Click:Connect(function()
-        selectTab(name)
-    end)
-end
-
--- Populate "Visual" like the screenshot
-do
-    local p = pages["Visual"]
-    Toggle(p, "ESP Box", false, function(v) print("ESP Box:", v) end)
-    Dropdown(p, "ESP Type", {"2D","3D"}, 1, function(choice) print("ESP Type:", choice) end)
-    Toggle(p, "ESP Filled", false, function(v) print("ESP Filled:", v) end)
-    Toggle(p, "ESP Distance", true, function(v) print("ESP Distance:", v) end)
-    Toggle(p, "ESP Name", true, function(v) print("ESP Name:", v) end)
-    Toggle(p, "ESP Health", true, function(v) print("ESP Health:", v) end)
-    Toggle(p, "ESP SnapLine", false, function(v) print("ESP SnapLine:", v) end)
-    Slider(p, "Limit Distance", 25, 1000, 300, function(v) print("Limit Distance:", math.floor(v)) end)
-
-    -- New toggle for ESP
-    local espToggle = Toggle(p, "Enable ESP", false, function(v)
-        espEnabled = v
-        if not v then
-            -- Cleanup ESP boxes
-            for _, box in pairs(espBoxes) do
-                if box and box.Parent then
-                    box:Destroy()
-                end
-            end
-            espBoxes = {}
-        end
-    end)
-end
-
--- Populate other tabs with placeholders
-do
-    local p = pages["Aimbot"]
-    Toggle(p, "Enabled", false, function(v) print("Aimbot Enabled:", v) end)
-    Dropdown(p, "Aim Part", {"Head","Torso","HumanoidRootPart"}, 1, function(c) print("Aim Part:", c) end)
-    Slider(p, "FOV", 10, 300, 120, function(v) print("FOV:", math.floor(v)) end)
-    Toggle(p, "Team Check", true, function(v) print("AB TeamCheck:", v) end)
-end
-
-do
-    local p = pages["Misc"]
-    Toggle(p, "Show FPS Counter", true, function(v) print("FPS Counter:", v) end)
-    Toggle(p, "No Post-Processing", false, function(v) print("No PP:", v) end)
-    Dropdown(p, "Theme", {"Dark","Darker","Midnight"}, 1, function(c) print("Theme:", c) end)
-end
-
-do
-    local p = pages["Whitelist"]
-    Toggle(p, "Enable Whitelist", false, function(v) print("Whitelist:", v) end)
-end
-
-do
-    local p = pages["Teleport"]
-    Dropdown(p, "Location", {"Spawn","Shop","Center"}, 1, function(c) print("Teleport to:", c) end)
-end
-
--- Default select first tab and enable dragging by topbar
-selectTab("Visual")
-makeDraggable(topbar, window)
-
--- ======== ESP SYSTEM ========
-local espEnabled = false
-local espBoxes = {}
-local function createESP(targetCharacter)
-    local box = Make("Frame", {
-        BackgroundTransparency = 1,
-        BorderSizePixel = 2,
-        BorderColor3 = Color3.fromRGB(255, 0, 0),
-        Size = UDim2.new(0, 100, 0, 100),
-        Visible = false,
-        ZIndex = 10
-    })
-    box.Parent = game:GetService("CoreGui")
-    return box
-end
-
-local camera = workspace.CurrentCamera
-
-RunService.RenderStepped:Connect(function()
-    if not espEnabled then return end
-    local localPlayer = Players.LocalPlayer
-    local localCharacter = localPlayer.Character
-    if not localCharacter or not camera then return end
-
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local hrp = player.Character.HumanoidRootPart
-            local screenPos, onScreen = camera:WorldToScreenPoint(hrp.Position)
-            if onScreen then
-                local box = espBoxes[player] or createESP(player.Character)
-                box.Position = UDim2.new(0, screenPos.X - box.Size.X.Offset/2, 0, screenPos.Y - box.Size.Y.Offset/2)
-                box.Visible = true
-                espBoxes[player] = box
-            else
-                if espBoxes[player] then
-                    espBoxes[player].Visible = false
-                end
-            end
-        end
-    end
 end)
 
-Players.PlayerRemoving:Connect(function(player)
-    if espBoxes[player] then
-        espBoxes[player]:Destroy()
-        espBoxes[player] = nil
-    end
-end)
-
--- Note: The toggle in the UI controls 'espEnabled' and clears ESP boxes if disabled.
-
-
--- OPTIONAL: Toggle UI with RightShift
-local visible = true
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.RightShift then
-        visible = not visible
-        window.Visible = visible
+MainFrame.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
     end
 end)
