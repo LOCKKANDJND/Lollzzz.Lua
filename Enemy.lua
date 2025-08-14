@@ -1,401 +1,443 @@
---!strict
--- MatrixHub-Style UI Template (no gameplay hacks)
--- Drop this in a LocalScript (e.g., StarterPlayerScripts). Pure Instance.new, no libraries.
+-- MatrixHub Full GUI Script for Roblox Da Strike
+-- Educational purposes only. Cheating risks bans. Use at your own risk.
+-- Requires an exploit supporting Drawing API (e.g., Synapse, Krnl).
 
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
-local plr = Players.LocalPlayer
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
 
--- ===== Utility =====
-local function Make(className, props, children)
-    local inst = Instance.new(className)
-    if props then
-        for k,v in pairs(props) do
-            inst[k] = v
-        end
-    end
-    if children then
-        for _,child in ipairs(children) do
-            child.Parent = inst
-        end
-    end
-    return inst
+-- Configurable states based on GUI
+local ESP_ENABLED = false
+local AIMBOT_ENABLED = false
+local TELEPORT_ENABLED = false  -- For Teleport tab
+
+local ESP_BOX = false
+local ESP_BOX_COLOR = Color3.fromRGB(255, 0, 0)  -- Red
+local ESP_TYPE = "2D"  -- Fixed as 2D
+local ESP_FILLED = false
+local ESP_DISTANCE = false
+local ESP_DISTANCE_COLOR = Color3.fromRGB(255, 255, 255)  -- White
+local ESP_NAME = false
+local ESP_NAME_COLOR = Color3.fromRGB(0, 255, 0)  -- Green
+local ESP_HEALTH = false
+local ESP_HEALTH_COLOR = Color3.fromRGB(0, 0, 255)  -- Blue
+local ESP_SNAPLINE = false
+local ESP_SNAPLINE_COLOR = Color3.fromRGB(255, 182, 193)  -- Pink
+local LIMIT_DISTANCE = 1000
+local LIMIT_ENABLED = false
+local TEAM_CHECK = false
+local NPC_CHECK = false  -- If game has NPCs, but probably not
+local HEALTH_CHECK = false
+
+-- Whitelist table (usernames not to target)
+local WHITELIST = {}
+
+-- Drawing objects table
+local ESP_DRAWINGS = {}
+
+-- Create GUI mimicking the image
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.Name = "MatrixHub"
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 400, 0, 300)
+MainFrame.Position = UDim2.new(0.5, -200, 0.5, -150)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 40)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.BackgroundColor3 = Color3.fromRGB(20, 20, 40)
+Title.Text = "MatrixHub"
+Title.TextColor3 = Color3.fromRGB(0, 191, 255)
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 24
+Title.Parent = MainFrame
+
+local Tabs = Instance.new("Frame")
+Tabs.Size = UDim2.new(1, 0, 0, 30)
+Tabs.Position = UDim2.new(0, 0, 0, 30)
+Tabs.BackgroundTransparency = 1
+Tabs.Parent = MainFrame
+
+local TabLabels = {"Visual", "Aimbot", "Misc", "Whitelist", "Teleport"}
+local TabContents = {}
+local CurrentTab = nil
+
+local function ShowTab(tabName)
+    if CurrentTab then CurrentTab.Visible = false end
+    CurrentTab = TabContents[tabName]
+    if CurrentTab then CurrentTab.Visible = true end
 end
 
-local function uiCorner(radius)
-    return Make("UICorner", { CornerRadius = UDim.new(0, radius) })
+for i, tab in ipairs(TabLabels) do
+    local Button = Instance.new("TextButton")
+    Button.Size = UDim2.new(1/#TabLabels, 0, 1, 0)
+    Button.Position = UDim2.new((i-1)/#TabLabels, 0, 0, 0)
+    Button.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
+    Button.Text = tab
+    Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Button.Parent = Tabs
+    Button.MouseButton1Click:Connect(function() ShowTab(tab) end)
 end
 
-local function uiStroke(thickness, color, trans)
-    return Make("UIStroke", { Thickness = thickness or 1, Color = color or Color3.fromRGB(255,255,255), Transparency = trans or 0.3 })
-end
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Size = UDim2.new(1, 0, 1, -60)
+ContentFrame.Position = UDim2.new(0, 0, 0, 60)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Parent = MainFrame
 
-local function uiPadding(l,t,r,b)
-    return Make("UIPadding", { PaddingLeft = UDim.new(0,l or 0), PaddingTop = UDim.new(0,t or 0),
-        PaddingRight = UDim.new(0,r or 0), PaddingBottom = UDim.new(0,b or 0) })
-end
+-- Visual Tab
+local VisualContent = Instance.new("Frame")
+VisualContent.Size = UDim2.new(1, 0, 1, 0)
+VisualContent.BackgroundTransparency = 1
+VisualContent.Parent = ContentFrame
+TabContents["Visual"] = VisualContent
+ShowTab("Visual")  -- Default tab
 
-local function newLabel(text, size)
-    return Make("TextLabel", {
-        BackgroundTransparency = 1,
-        Font = Enum.Font.GothamBold,
-        Text = text,
-        TextSize = size or 14,
-        TextColor3 = Color3.fromRGB(220,230,240),
-        TextXAlignment = Enum.TextXAlignment.Left,
-    })
-end
+local LeftColumn = Instance.new("Frame")
+LeftColumn.Size = UDim2.new(0.5, 0, 1, 0)
+LeftColumn.BackgroundTransparency = 1
+LeftColumn.Parent = VisualContent
 
--- Simple draggable behavior for a frame
-local function makeDraggable(handle: Frame, dragTarget: Frame)
-    local dragging = false
-    local dragStart, startPos
-    handle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = dragTarget.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
+local RightColumn = Instance.new("Frame")
+RightColumn.Size = UDim2.new(0.5, 0, 1, 0)
+RightColumn.Position = UDim2.new(0.5, 0, 0, 0)
+RightColumn.BackgroundTransparency = 1
+RightColumn.Parent = VisualContent
+
+local function CreateToggle(parent, name, varName, color, yPos, isColorToggle)
+    local ToggleFrame = Instance.new("Frame")
+    ToggleFrame.Size = UDim2.new(1, -20, 0, 30)
+    ToggleFrame.Position = UDim2.new(0, 10, 0, yPos)
+    ToggleFrame.BackgroundTransparency = 1
+    ToggleFrame.Parent = parent
+
+    local ColorIndicator = Instance.new("Frame")
+    ColorIndicator.Size = UDim2.new(0, 20, 0, 20)
+    ColorIndicator.Position = UDim2.new(0, 0, 0.5, -10)
+    ColorIndicator.BackgroundColor3 = color or Color3.fromRGB(128, 128, 128)
+    ColorIndicator.BorderSizePixel = 0
+    ColorIndicator.Parent = ToggleFrame
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(0, 150, 1, 0)
+    Label.Position = UDim2.new(0, 25, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = name
+    Label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = ToggleFrame
+
+    local Toggle = Instance.new("TextButton")
+    Toggle.Size = UDim2.new(0, 50, 0, 20)
+    Toggle.Position = UDim2.new(1, -60, 0.5, -10)
+    Toggle.BackgroundColor3 = Color3.fromRGB(50, 50, 80)
+    Toggle.Text = _G[varName] and "ON" or "OFF"
+    Toggle.TextColor3 = _G[varName] and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+    Toggle.Parent = ToggleFrame
+
+    Toggle.MouseButton1Click:Connect(function()
+        _G[varName] = not _G[varName]
+        Toggle.Text = _G[varName] and "ON" or "OFF"
+        Toggle.TextColor3 = _G[varName] and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
     end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            dragTarget.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
+
+    return ToggleFrame
 end
 
--- ===== Controls =====
-local Theme = {
-    Bg = Color3.fromRGB(25,31,38),
-    Panel = Color3.fromRGB(34, 41, 51),
-    Panel2 = Color3.fromRGB(42, 50, 62),
-    Accent = Color3.fromRGB(52, 152, 219),
-    Accent2 = Color3.fromRGB(0, 180, 255),
-    TextDim = Color3.fromRGB(180,190,200),
-    On = Color3.fromRGB(65, 180, 90),
-    Off = Color3.fromRGB(70, 76, 86)
-}
+-- Left Column Toggles
+CreateToggle(LeftColumn, "ESP Box", "ESP_BOX", ESP_BOX_COLOR, 0)
+local EspTypeLabel = Instance.new("TextLabel")
+EspTypeLabel.Size = UDim2.new(1, -20, 0, 30)
+EspTypeLabel.Position = UDim2.new(0, 10, 0, 40)
+EspTypeLabel.BackgroundTransparency = 1
+EspTypeLabel.Text = "ESP Type: 2D"
+EspTypeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+EspTypeLabel.Parent = LeftColumn
 
-local function Toggle(parent: Instance, labelText: string, default: boolean, callback)
-    local row = Make("Frame", { BackgroundColor3 = Theme.Panel, Size = UDim2.new(1,0,0,40) }, {
-        uiCorner(12), uiStroke(1, Color3.fromRGB(255,255,255), 0.8), uiPadding(12,8,12,8)
-    })
-    row.Parent = parent
+CreateToggle(LeftColumn, "ESP Filled", "ESP_FILLED", Color3.fromRGB(128, 128, 128), 80)
+CreateToggle(LeftColumn, "ESP Distance", "ESP_DISTANCE", ESP_DISTANCE_COLOR, 120)
+CreateToggle(LeftColumn, "ESP Name", "ESP_NAME", ESP_NAME_COLOR, 160)
+CreateToggle(LeftColumn, "ESP Health", "ESP_HEALTH", ESP_HEALTH_COLOR, 200)
+CreateToggle(LeftColumn, "ESP Snapline", "ESP_SNAPLINE", ESP_SNAPLINE_COLOR, 240)
+CreateToggle(LeftColumn, "Limit Distance", "LIMIT_ENABLED", Color3.fromRGB(128, 128, 128), 280)
 
-    local label = newLabel(labelText, 14)
-    label.Size = UDim2.new(1,-80,1,0); label.Parent = row
+-- Right Column Toggles
+CreateToggle(RightColumn, "Team Check", "TEAM_CHECK", Color3.fromRGB(128, 128, 128), 0)
+CreateToggle(RightColumn, "NPC Check", "NPC_CHECK", Color3.fromRGB(128, 128, 128), 40)
+CreateToggle(RightColumn, "Health Check", "HEALTH_CHECK", Color3.fromRGB(128, 128, 128), 80)
 
-    local knob = Make("TextButton", {
-        Size = UDim2.new(0,52,0,24),
-        Position = UDim2.new(1,-60,0.5,-12),
-        BackgroundColor3 = default and Theme.On or Theme.Off,
-        Text = "",
-        AutoButtonColor = false
-    }, { uiCorner(12) })
-    knob.Parent = row
+-- Aimbot Tab
+local AimbotContent = Instance.new("Frame")
+AimbotContent.Size = UDim2.new(1, 0, 1, 0)
+AimbotContent.BackgroundTransparency = 1
+AimbotContent.Parent = ContentFrame
+AimbotContent.Visible = false
+TabContents["Aimbot"] = AimbotContent
 
-    local dot = Make("Frame", {
-        Size = UDim2.new(0,18,0,18),
-        Position = default and UDim2.new(1,-21,0.5,-9) or UDim2.new(0,3,0.5,-9),
-        BackgroundColor3 = Color3.fromRGB(245,247,250)
-    }, { uiCorner(9) })
-    dot.Parent = knob
+CreateToggle(AimbotContent, "Aimbot Enabled", "AIMBOT_ENABLED", nil, 0)
 
-    local state = default
-    local function set(v)
-        state = v
-        knob.BackgroundColor3 = v and Theme.On or Theme.Off
-        dot.Position = v and UDim2.new(1,-21,0.5,-9) or UDim2.new(0,3,0.5,-9)
-        if callback then
-            task.spawn(function() callback(v) end)
-        end
+-- Misc Tab (Placeholder)
+local MiscContent = Instance.new("Frame")
+MiscContent.Size = UDim2.new(1, 0, 1, 0)
+MiscContent.BackgroundTransparency = 1
+MiscContent.Parent = ContentFrame
+MiscContent.Visible = false
+TabContents["Misc"] = MiscContent
+
+local MiscLabel = Instance.new("TextLabel")
+MiscLabel.Size = UDim2.new(1, 0, 1, 0)
+MiscLabel.Text = "Misc Features (Implement as needed)"
+MiscLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+MiscLabel.Parent = MiscContent
+
+-- Whitelist Tab
+local WhitelistContent = Instance.new("Frame")
+WhitelistContent.Size = UDim2.new(1, 0, 1, 0)
+WhitelistContent.BackgroundTransparency = 1
+WhitelistContent.Parent = ContentFrame
+WhitelistContent.Visible = false
+TabContents["Whitelist"] = WhitelistContent
+
+local WhitelistInput = Instance.new("TextBox")
+WhitelistInput.Size = UDim2.new(1, -20, 0, 30)
+WhitelistInput.Position = UDim2.new(0, 10, 0, 10)
+WhitelistInput.BackgroundColor3 = Color3.fromRGB(50, 50, 80)
+WhitelistInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+WhitelistInput.PlaceholderText = "Enter username to whitelist"
+WhitelistInput.Parent = WhitelistContent
+
+local AddButton = Instance.new("TextButton")
+AddButton.Size = UDim2.new(0, 100, 0, 30)
+AddButton.Position = UDim2.new(0, 10, 0, 50)
+AddButton.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
+AddButton.Text = "Add to Whitelist"
+AddButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+AddButton.Parent = WhitelistContent
+
+AddButton.MouseButton1Click:Connect(function()
+    local user = WhitelistInput.Text
+    if user ~= "" then
+        table.insert(WHITELIST, user)
+        WhitelistInput.Text = ""
+        print("Added to whitelist: " .. user)
     end
+end)
 
-    knob.MouseButton1Click:Connect(function() set(not state) end)
-    return {
-        Set = set,
-        Get = function() return state end,
-        Instance = row
+-- Teleport Tab
+local TeleportContent = Instance.new("Frame")
+TeleportContent.Size = UDim2.new(1, 0, 1, 0)
+TeleportContent.BackgroundTransparency = 1
+TeleportContent.Parent = ContentFrame
+TeleportContent.Visible = false
+TabContents["Teleport"] = TeleportContent
+
+CreateToggle(TeleportContent, "Teleport Enabled", "TELEPORT_ENABLED", nil, 0)
+
+local TeleportInfo = Instance.new("TextLabel")
+TeleportInfo.Size = UDim2.new(1, 0, 0, 30)
+TeleportInfo.Position = UDim2.new(0, 0, 0, 40)
+TeleportInfo.Text = "Press T to teleport to nearest player"
+TeleportInfo.TextColor3 = Color3.fromRGB(255, 255, 255)
+TeleportInfo.Parent = TeleportContent
+
+-- ESP Function
+local function IsWhitelisted(player)
+    return table.find(WHITELIST, player.Name) ~= nil
+end
+
+local function CreateESP(player)
+    if player == LocalPlayer then return end
+    
+    local drawings = {
+        box = Drawing.new("Square"),
+        name = Drawing.new("Text"),
+        health = Drawing.new("Text"),
+        distance = Drawing.new("Text"),
+        snapline = Drawing.new("Line")
     }
-end
-
-local function Slider(parent, labelText, min, max, default, callback)
-    local row = Make("Frame", { BackgroundColor3 = Theme.Panel, Size = UDim2.new(1,0,0,50) }, {
-        uiCorner(12), uiStroke(1, Color3.fromRGB(255,255,255), 0.8), uiPadding(12,8,12,8)
-    })
-    row.Parent = parent
-
-    local label = newLabel(labelText, 14)
-    label.Size = UDim2.new(1,0,0,16); label.Parent = row
-
-    local bar = Make("Frame", { BackgroundColor3 = Theme.Panel2, Size = UDim2.new(1,-80,0,8), Position = UDim2.new(0,0,0,26) }, { uiCorner(6) })
-    bar.Parent = row
-
-    local fill = Make("Frame", { BackgroundColor3 = Theme.Accent, Size = UDim2.new((default-min)/(max-min),0,1,0) }, { uiCorner(6) })
-    fill.Parent = bar
-
-    local valueLbl = newLabel(tostring(default), 14)
-    valueLbl.TextXAlignment = Enum.TextXAlignment.Right
-    valueLbl.Size = UDim2.new(0,70,0,20)
-    valueLbl.Position = UDim2.new(1,-70,0,22)
-    valueLbl.Parent = row
-
-    local val = default
-    local dragging = false
-    local function set(n)
-        n = math.clamp(n, min, max)
-        val = n
-        local alpha = (n - min) / (max - min)
-        fill.Size = UDim2.new(alpha,0,1,0)
-        valueLbl.Text = tostring(math.floor(n + 0.5))
-        if callback then task.spawn(function() callback(val) end) end
-    end
-
-    bar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
+    
+    drawings.box.Thickness = 1
+    drawings.box.Color = ESP_BOX_COLOR
+    drawings.box.Filled = ESP_FILLED
+    drawings.box.Visible = false
+    
+    drawings.name.Size = 13
+    drawings.name.Color = ESP_NAME_COLOR
+    drawings.name.Visible = false
+    drawings.name.Outline = true
+    
+    drawings.health.Size = 13
+    drawings.health.Color = ESP_HEALTH_COLOR
+    drawings.health.Visible = false
+    drawings.health.Outline = true
+    
+    drawings.distance.Size = 13
+    drawings.distance.Color = ESP_DISTANCE_COLOR
+    drawings.distance.Visible = false
+    drawings.distance.Outline = true
+    
+    drawings.snapline.Thickness = 1
+    drawings.snapline.Color = ESP_SNAPLINE_COLOR
+    drawings.snapline.Visible = false
+    
+    ESP_DRAWINGS[player] = drawings
+    
+    local connection
+    connection = RunService.RenderStepped:Connect(function()
+        local char = player.Character
+        if not ESP_ENABLED or not char or not char:FindFirstChild("Humanoid") or not char:FindFirstChild("HumanoidRootPart") then
+            for _, drawing in pairs(drawings) do drawing.Visible = false end
+            return
+        end
+        
+        local humanoid = char.Humanoid
+        if HEALTH_CHECK and humanoid.Health <= 0 then
+            for _, drawing in pairs(drawings) do drawing.Visible = false end
+            return
+        end
+        
+        if TEAM_CHECK and player.Team == LocalPlayer.Team then
+            for _, drawing in pairs(drawings) do drawing.Visible = false end
+            return
+        end
+        
+        if IsWhitelisted(player) then
+            for _, drawing in pairs(drawings) do drawing.Visible = false end
+            return
+        end
+        
+        -- NPC Check: Assume players only, skip if NPC_CHECK off and is NPC (but no NPCs likely)
+        
+        local root = char.HumanoidRootPart
+        local distance = (root.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
+        
+        if LIMIT_ENABLED and distance > LIMIT_DISTANCE then
+            for _, drawing in pairs(drawings) do drawing.Visible = false end
+            return
+        end
+        
+        local headPos, onScreen = Camera:WorldToViewportPoint(char.Head.Position)
+        if not onScreen then
+            for _, drawing in pairs(drawings) do drawing.Visible = false end
+            return
+        end
+        
+        local legPos = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
+        local boxHeight = math.abs(headPos.Y - legPos.Y)
+        local boxWidth = boxHeight / 2
+        
+        drawings.box.Visible = ESP_BOX
+        if ESP_BOX then
+            drawings.box.Size = Vector2.new(boxWidth, boxHeight)
+            drawings.box.Position = Vector2.new(headPos.X - boxWidth / 2, headPos.Y)
+            drawings.box.Filled = ESP_FILLED
+        end
+        
+        drawings.name.Visible = ESP_NAME
+        if ESP_NAME then
+            drawings.name.Text = player.Name
+            drawings.name.Position = Vector2.new(headPos.X, headPos.Y - 20)
+        end
+        
+        drawings.health.Visible = ESP_HEALTH
+        if ESP_HEALTH then
+            drawings.health.Text = math.floor(humanoid.Health) .. "/" .. humanoid.MaxHealth
+            drawings.health.Position = Vector2.new(headPos.X, headPos.Y + boxHeight)
+        end
+        
+        drawings.distance.Visible = ESP_DISTANCE
+        if ESP_DISTANCE then
+            drawings.distance.Text = math.floor(distance) .. "m"
+            drawings.distance.Position = Vector2.new(headPos.X, headPos.Y + boxHeight + 15)
+        end
+        
+        drawings.snapline.Visible = ESP_SNAPLINE
+        if ESP_SNAPLINE then
+            drawings.snapline.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+            drawings.snapline.To = Vector2.new(headPos.X, headPos.Y)
         end
     end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
+    
+    local function cleanup()
+        connection:Disconnect()
+        for _, d in pairs(drawings) do d:Remove() end
+        ESP_DRAWINGS[player] = nil
+    end
+    
+    player.CharacterRemoving:Connect(cleanup)
+    player.AncestryChanged:Connect(function(_, parent)
+        if not parent then cleanup() end
     end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local rel = (input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X
-            set(min + rel * (max - min))
-        end
-    end)
-
-    set(default)
-    return { Set = set, Get = function() return val end, Instance = row }
 end
 
-local function Dropdown(parent, labelText, options, defaultIndex, callback)
-    local row = Make("Frame", { BackgroundColor3 = Theme.Panel, Size = UDim2.new(1,0,0,40) }, {
-        uiCorner(12), uiStroke(1, Color3.fromRGB(255,255,255), 0.8), uiPadding(12,8,12,8)
-    })
-    row.Parent = parent
+for _, player in ipairs(Players:GetPlayers()) do
+    CreateESP(player)
+end
 
-    local label = newLabel(labelText, 14); label.Size = UDim2.new(1,-120,1,0); label.Parent = row
-
-    local btn = Make("TextButton", {
-        Size = UDim2.new(0,100,1,-8),
-        Position = UDim2.new(1,-100,0,4),
-        BackgroundColor3 = Theme.Panel2,
-        TextColor3 = Color3.fromRGB(230,235,240),
-        Font = Enum.Font.Gotham,
-        TextSize = 14,
-        AutoButtonColor = true,
-        Text = ""
-    }, { uiCorner(10) })
-    btn.Parent = row
-
-    local choiceLbl = newLabel("", 14)
-    choiceLbl.TextXAlignment = Enum.TextXAlignment.Center
-    choiceLbl.Size = UDim2.new(1,0,1,0)
-    choiceLbl.Parent = btn
-
-    local menu = Make("Frame", { Visible = false, BackgroundColor3 = Theme.Panel2, Size = UDim2.new(0,140,0, (#options*28)+8), Position = UDim2.new(1,-140,1,6) }, {
-        uiCorner(10), uiStroke(1, Color3.fromRGB(255,255,255), 0.8), uiPadding(6,6,6,6)
-    })
-    menu.Parent = row
-
-    local list = Make("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, Padding = UDim.new(0,6), SortOrder = Enum.SortOrder.LayoutOrder })
-    list.Parent = menu
-
-    local index = math.clamp(defaultIndex or 1, 1, #options)
-    local function set(i)
-        index = i
-        choiceLbl.Text = tostring(options[i])
-        if callback then task.spawn(function() callback(options[i], i) end) end
-    end
-
-    for i,opt in ipairs(options) do
-        local optBtn = Make("TextButton", {
-            BackgroundColor3 = Theme.Panel,
-            Size = UDim2.new(1,0,0,26),
-            Text = tostring(opt),
-            TextColor3 = Color3.fromRGB(230,235,240),
-            Font = Enum.Font.Gotham,
-            TextSize = 14,
-            AutoButtonColor = true
-        }, { uiCorner(8) })
-        optBtn.Parent = menu
-        optBtn.MouseButton1Click:Connect(function()
-            set(i)
-            menu.Visible = false
-        end)
-    end
-
-    btn.MouseButton1Click:Connect(function()
-        menu.Visible = not menu.Visible
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        CreateESP(player)
     end)
+end)
 
-    set(index)
-    return { SetIndex = set, GetIndex = function() return index end, Instance = row }
-end
-
--- ===== Root UI =====
-local gui = Make("ScreenGui", { Name = "MatrixUI_Template", ResetOnSpawn = false, IgnoreGuiInset = true })
-gui.Parent = plr:WaitForChild("PlayerGui")
-
-local window = Make("Frame", {
-    Size = UDim2.new(0, 640, 0, 420),
-    Position = UDim2.new(0.5, -320, 0.5, -210),
-    BackgroundColor3 = Theme.Bg
-}, { uiCorner(16), uiStroke(1.2, Color3.fromRGB(255,255,255), 0.85) })
-window.Parent = gui
-
--- Top bar
-local topbar = Make("Frame", {
-    BackgroundColor3 = Theme.Bg,
-    Size = UDim2.new(1, -16, 0, 54),
-    Position = UDim2.new(0,8,0,8)
-}, { uiCorner(12), uiPadding(16,10,16,10) })
-topbar.Parent = window
-
-local title = newLabel("MatrixHub", 20)
-title.TextColor3 = Color3.fromRGB(160, 200, 255)
-title.Parent = topbar
-
--- Tabs
-local tabs = { "Visual", "Aimbot", "Misc", "Whitelist", "Teleport" }
-
-local tabBar = Make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1,0,0,28), Position = UDim2.new(0,0,0,58) })
-tabBar.Parent = window
-
-local tabList = Make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0,12), SortOrder = Enum.SortOrder.LayoutOrder })
-tabList.Parent = tabBar
-tabList.HorizontalAlignment = Enum.HorizontalAlignment.Left
-
-local pages = {}
-
-local content = Make("Frame", {
-    BackgroundColor3 = Theme.Bg,
-    Size = UDim2.new(1,-16,1,-100),
-    Position = UDim2.new(0,8,0,96)
-}, { uiCorner(12) })
-content.Parent = window
-
-local function newPage()
-    local scroller = Make("ScrollingFrame", {
-        BackgroundColor3 = Theme.Bg,
-        Size = UDim2.new(1, -16, 1, -16),
-        Position = UDim2.new(0,8,0,8),
-        CanvasSize = UDim2.new(0,0,0,0),
-        ScrollBarThickness = 6,
-        AutomaticCanvasSize = Enum.AutomaticSize.Y
-    }, { uiPadding(8,8,8,8) })
-    scroller.Parent = content
-
-    local grid = Make("UIGridLayout", {
-        CellPadding = UDim2.new(0,10,0,10),
-        CellSize = UDim2.new(0.5, -10, 0, 50),
-        SortOrder = Enum.SortOrder.LayoutOrder
-    })
-    grid.Parent = scroller
-
-    return scroller
-end
-
-local function selectTab(name)
-    for tabName, page in pairs(pages) do
-        page.Visible = (tabName == name)
-    end
-    for _,btn in ipairs(tabBar:GetChildren()) do
-        if btn:IsA("TextButton") then
-            btn.TextColor3 = (btn.Name == name) and Color3.fromRGB(230,240,255) or Theme.TextDim
-            btn.BackgroundColor3 = (btn.Name == name) and Theme.Panel2 or Color3.fromRGB(0,0,0)
+-- Aimbot (Camlock to nearest non-whitelisted)
+local function GetClosestPlayer()
+    local closest = nil
+    local minDist = math.huge
+    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") and not IsWhitelisted(player) then
+            if TEAM_CHECK and player.Team == LocalPlayer.Team then continue end
+            local humanoid = player.Character.Humanoid
+            if humanoid.Health > 0 then
+                local headPos, onScreen = Camera:WorldToViewportPoint(player.Character.Head.Position)
+                if onScreen then
+                    local dist = (Vector2.new(headPos.X, headPos.Y) - center).Magnitude
+                    if dist < minDist then
+                        minDist = dist
+                        closest = player.Character.Head
+                    end
+                end
+            end
         end
     end
+    return closest
 end
 
-for _,name in ipairs(tabs) do
-    local tbtn = Make("TextButton", {
-        Name = name,
-        Size = UDim2.new(0,110,0,28),
-        BackgroundColor3 = Color3.fromRGB(0,0,0),
-        Text = name,
-        TextColor3 = Theme.TextDim,
-        Font = Enum.Font.GothamSemibold,
-        TextSize = 14,
-        AutoButtonColor = true
-    }, { uiCorner(10), uiStroke(1, Color3.fromRGB(255,255,255), 0.9) })
-    tbtn.Parent = tabBar
+RunService.RenderStepped:Connect(function()
+    if AIMBOT_ENABLED then
+        local target = GetClosestPlayer()
+        if target then
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Position)
+        end
+    end
+end)
 
-    local page = newPage()
-    page.Visible = false
-    pages[name] = page
+-- Teleport on 'T' if enabled
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.T and TELEPORT_ENABLED then
+        local target = GetClosestPlayer()
+        if target then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = target.Parent.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
+        end
+    end
+end)
 
-    tbtn.MouseButton1Click:Connect(function()
-        selectTab(name)
-    end)
-end
-
--- Populate "Visual" like the screenshot
-do
-    local p = pages["Visual"]
-    Toggle(p, "ESP Box", false, function(v) print("ESP Box:", v) end)
-    Dropdown(p, "ESP Type", {"2D","3D"}, 1, function(choice) print("ESP Type:", choice) end)
-    Toggle(p, "ESP Filled", false, function(v) print("ESP Filled:", v) end)
-    Toggle(p, "ESP Distance", true, function(v) print("ESP Distance:", v) end)
-    Toggle(p, "ESP Name", true, function(v) print("ESP Name:", v) end)
-    Toggle(p, "ESP Health", true, function(v) print("ESP Health:", v) end)
-    Toggle(p, "ESP SnapLine", false, function(v) print("ESP SnapLine:", v) end)
-    Slider(p, "Limit Distance", 25, 1000, 300, function(v) print("Limit Distance:", math.floor(v)) end)
-
-    -- Right column example options
-    Toggle(p, "Team Check", false, function(v) print("Team Check:", v) end)
-    Toggle(p, "NPC Check", false, function(v) print("NPC Check:", v) end)
-    Toggle(p, "Health Check", false, function(v) print("Health Check:", v) end)
-end
-
--- Populate other tabs with placeholders
-do
-    local p = pages["Aimbot"]
-    Toggle(p, "Enabled", false, function(v) print("Aimbot Enabled:", v) end)
-    Dropdown(p, "Aim Part", {"Head","Torso","HumanoidRootPart"}, 1, function(c) print("Aim Part:", c) end)
-    Slider(p, "FOV", 10, 300, 120, function(v) print("FOV:", math.floor(v)) end)
-    Toggle(p, "Team Check", true, function(v) print("AB TeamCheck:", v) end)
-end
-
-do
-    local p = pages["Misc"]
-    Toggle(p, "Show FPS Counter", true, function(v) print("FPS Counter:", v) end)
-    Toggle(p, "No Post-Processing", false, function(v) print("No PP:", v) end)
-    Dropdown(p, "Theme", {"Dark","Darker","Midnight"}, 1, function(c) print("Theme:", c) end)
-end
-
-do
-    local p = pages["Whitelist"]
-    Toggle(p, "Enable Whitelist", false, function(v) print("Whitelist:", v) end)
-end
-
-do
-    local p = pages["Teleport"]
-    Dropdown(p, "Location", {"Spawn","Shop","Center"}, 1, function(c) print("Teleport to:", c) end)
-end
-
--- Default select first tab and enable dragging by topbar
-selectTab("Visual")
-makeDraggable(topbar, window)
-
--- Optional: toggle UI with RightShift (mobile users can add their own button)
-local visible = true
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.RightShift then
-        visible = not visible
-        window.Visible = visible
+-- Toggle ESP globally with 'E' (optional, since GUI has toggles)
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.E then
+        ESP_ENABLED = not ESP_ENABLED
+        print("ESP Toggled:", ESP_ENABLED)
     end
 end)
